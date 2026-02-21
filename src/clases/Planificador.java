@@ -1,26 +1,22 @@
 package clases;
 
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.List;
-
 public class Planificador {
+    public void ordenarPorPrioridad(Cola<Proceso> cola) {
+        int n = cola.getTamano(); // <--- Aquí estaba el error
+        if (n <= 1) return;
 
-    // Método EDF: Ordena los procesos por su fecha límite (Deadline)
-    public void planificarEDF(List<Proceso> listaDeProcesos) {
-        
-        Collections.sort(listaDeProcesos, new Comparator<Proceso>() {
-            @Override
-            public int compare(Proceso p1, Proceso p2) {
-                // Compara el deadline de p1 con el de p2
-                // El que tenga el número menor (más cercano) va primero
-                return Integer.compare(p1.getDeadline(), p2.getDeadline());
+        Proceso[] arr = new Proceso[n];
+        for (int i = 0; i < n; i++) arr[i] = cola.desencolar();
+
+        for (int i = 0; i < n - 1; i++) {
+            for (int j = 0; j < n - i - 1; j++) {
+                if (arr[j].getPrioridad() > arr[j + 1].getPrioridad()) {
+                    Proceso temp = arr[j];
+                    arr[j] = arr[j + 1];
+                    arr[j + 1] = temp;
+                }
             }
-        });
-
-        System.out.println("--- Lista planificada por EDF ---");
-        for (Proceso p : listaDeProcesos) {
-            System.out.println("Proceso: " + p.getNombre() + " | Deadline: " + p.getDeadline());
         }
+        for (Proceso p : arr) cola.encolar(p);
     }
 }

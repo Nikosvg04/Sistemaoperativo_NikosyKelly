@@ -2,24 +2,27 @@ package clases;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
-import java.util.ArrayList;
-import java.util.List;
+import java.io.IOException;
 
 public class LectorArchivos {
-    
-    // Este método lee el archivo y devuelve una lista de procesos
-    public List<String[]> leerCSV(String ruta) {
-        List<String[]> lineas = new ArrayList<>();
+    public Cola<Proceso> leerCSV(String ruta) {
+        Cola<Proceso> colaResultado = new Cola<>();
         try (BufferedReader br = new BufferedReader(new FileReader(ruta))) {
             String linea;
             while ((linea = br.readLine()) != null) {
-                // Separamos por comas: Nombre, Tipo, Tiempo, Prioridad, Deadline
-                String[] datos = linea.split(",");
-                lineas.add(datos);
+                String[] d = linea.split(",");
+                if (d.length >= 5) {
+                    colaResultado.encolar(new Proceso(
+                        d[0].trim(), d[1].trim(), 
+                        Integer.parseInt(d[2].trim()), 
+                        Integer.parseInt(d[3].trim()), 
+                        Integer.parseInt(d[4].trim())
+                    ));
+                }
             }
         } catch (Exception e) {
-            System.out.println("Error al leer el archivo: " + e.getMessage());
+            System.out.println("Error: " + e.getMessage());
         }
-        return lineas;
+        return colaResultado;
     }
 }
