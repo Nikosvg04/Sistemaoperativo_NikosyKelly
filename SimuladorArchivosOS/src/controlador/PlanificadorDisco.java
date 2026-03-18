@@ -1,80 +1,71 @@
 package controlador;
 
-import estructuras.Cola;
 import modelo.Proceso;
+import estructuras.Cola; // Asumiendo que tienes una clase Cola, si no, usamos ListaEnlazada
+import estructuras.ListaEnlazada;
 
 public class PlanificadorDisco extends Thread {
-    
-    private Cola<Proceso> colaProcesos;
-    private int posicionCabezalActual;
-    private boolean sistemaEncendido;
-    private String politicaActual; // Puede ser "FIFO", "SSTF", "SCAN" o "C-SCAN"
+    private ListaEnlazada<Proceso> colaProcesos;
+    private boolean activo;
+    private int posicionCabezal; // Simula la ubicación física en el disco
 
-    public PlanificadorDisco(int cabezalInicial) {
-        this.colaProcesos = new Cola<>();
-        this.posicionCabezalActual = cabezalInicial;
-        this.sistemaEncendido = true;
-        this.politicaActual = "FIFO"; // Política por defecto
+    public PlanificadorDisco(int posicionInicial) {
+        this.colaProcesos = new ListaEnlazada<>();
+        this.activo = true;
+        this.posicionCabezal = posicionInicial;
     }
 
-    // --- Métodos de configuración ---
-    public void setPolitica(String politica) {
-        this.politicaActual = politica;
-    }
-    
-    public int getPosicionCabezalActual() {
-        return posicionCabezalActual;
+    public void agregarProceso(Proceso p) {
+        synchronized (colaProcesos) {
+            colaProcesos.insertarFinal(p);
+            System.out.println("Planificador: Nuevo proceso en cola -> " + p.getNombreArchivo());
+        }
     }
 
-    public void apagarSistema() {
-        this.sistemaEncendido = false;
-    }
-
-    // Método que llamará la GUI cuando el usuario le dé al botón "Crear", "Leer", etc.
-    public void agregarProceso(Proceso proceso) {
-        proceso.setEstado(Proceso.Estado.LISTO);
-        colaProcesos.encolar(proceso);
-        System.out.println("Proceso encolado: " + proceso.getPid()); // Para ver en consola que funciona
-    }
-
-    // --- EL MOTOR DEL HILO (El método run se ejecuta infinitamente en el fondo) ---
     @Override
     public void run() {
-        while (sistemaEncendido) {
-            if (!colaProcesos.estaVacia()) {
-                
-                // Aquí es donde en el futuro meteremos los ifs para SSTF, SCAN, etc.
-                // Por ahora, aplicamos la política básica: FIFO (El primero que llega es el primero en salir)
-                Proceso procesoAtendido = colaProcesos.desencolar();
-                
-                // 1. Cambiamos estado a EJECUTANDO
-                procesoAtendido.setEstado(Proceso.Estado.EJECUTANDO);
-                
-                // 2. Simulamos el tiempo que tarda el disco mecánicamente en moverse (1 segundo)
-                try {
-                    Thread.sleep(1000); 
-                } catch (InterruptedException e) {
-                    System.out.println("El hilo del disco fue interrumpido.");
-                }
-                
-                // 3. Movemos el cabezal del disco a donde nos pidió el proceso
-                if(procesoAtendido.getBloqueObjetivo() != -1){
-                    this.posicionCabezalActual = procesoAtendido.getBloqueObjetivo();
-                }
+        while (activo) {
+            Proceso procesoActual = null;
 
-                // 4. Terminamos la operación de Entrada/Salida
-                procesoAtendido.setEstado(Proceso.Estado.TERMINADO);
-                System.out.println("Proceso Terminado: " + procesoAtendido.getPid() + " | Cabezal ahora en: " + posicionCabezalActual);
-                
+            synchronized (colaProcesos) {
+                if (colaProcesos.tamaño() > 0) {
+                    procesoActual = colaProcesos.obtener(0);
+                    colaProcesos.eliminar(0);
+                }
+            }
+
+            if (procesoActual != null) {
+                simularMovimientoCabezal(procesoActual);
             } else {
-                // Si la cola está vacía, hacemos que el hilo "duerma" un poco 
-                // para no consumir el 100% de la CPU de tu computadora.
                 try {
-                    Thread.sleep(500);
+                    Thread.sleep(500); // Espera un poco si no hay procesos
                 } catch (InterruptedException e) {
-                    // Ignorar
+                    Thread.currentThread().interrupt();
                 }
             }
         }
+    }
+
+    private void simularMovimientoCabezal(Proceso p) {
+        p.setEstado(Proceso.Estado.EJECUTANDO);
+        int destino = p.getBloqueObjetivo();
+        
+        System.out.println("Cabezal moviéndose de " + posicionCabezal + " a " + destino);
+        
+        // Simulamos el tiempo de búsqueda (Seek Time)
+        try {
+            int distancia = Math.abs(posicionCabezal - destino);
+            Thread.sleep(distancia * 50); // 50ms por bloque
+            posicionCabezal = destino;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
+        p.setEstado(Proceso.Estado.TERMINADO);
+        System.out.println("Proceso finalizado: " + p.getOperacion() + " en " + p.getNombreArchivo());
+    }
+
+    public void apagarSistema() {
+        this.activo = false;
     }
 }

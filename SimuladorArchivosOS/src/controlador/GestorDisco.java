@@ -4,87 +4,83 @@ import modelo.ArchivoVirtual;
 import modelo.BloqueDisco;
 
 public class GestorDisco {
-    private BloqueDisco[] disco;    // El arreglo que simula todo el Disco Duro
-    private int capacidadTotal;     // Cuántos bloques tiene el disco en total
-    private int bloquesLibres;      // Cuántos bloques nos quedan disponibles
+    private BloqueDisco[] disco;
+    private int capacidadTotal;
+    private int bloquesLibres;
 
     public GestorDisco(int capacidad) {
         this.capacidadTotal = capacidad;
         this.bloquesLibres = capacidad;
         this.disco = new BloqueDisco[capacidad];
-        
-        // Inicializar cada bloque del disco (formateo inicial)
         for (int i = 0; i < capacidad; i++) {
             disco[i] = new BloqueDisco(i);
         }
     }
 
-    public BloqueDisco[] getDisco() { return disco; }
-    
-    public int getBloquesLibres() { return bloquesLibres; }
-
-    // Verifica si hay suficiente espacio. 
-    // Como es Asignación Encadenada, solo importa que haya bloques libres en total, no importa si están separados.
-    public boolean hayEspacioSuficiente(int bloquesRequeridos) {
-        return bloquesLibres >= bloquesRequeridos;
-    }
-
-    // --- EL ALGORITMO ESTRELLA: Asignación Encadenada ---
     public boolean asignarEspacio(ArchivoVirtual archivo) {
-        int bloquesNecesarios = archivo.getTamañoEnBloques();
+        int bloquesNecesarios = archivo.getTamaño(); // Cambia a getTamañoEnBloques() si así se llama en tu clase
         
-        if (!hayEspacioSuficiente(bloquesNecesarios)) {
-            return false; // Retorna falso si no hay espacio para que la GUI muestre un error
-        }
+        if (bloquesLibres < bloquesNecesarios) return false;
 
-        int bloquesAsignados = 0;
-        int bloqueAnterior = -1;
+        int mejorInicio = -1;
+        int menorTamañoHueco = capacidadTotal + 1;
+        int inicioActual = -1;
+        int tamañoActual = 0;
 
-        // Recorremos el disco buscando bloques libres
+        // Lógica Best-Fit
         for (int i = 0; i < capacidadTotal; i++) {
-            if (!disco[i].isOcupado()) {
-                
-                // 1. Ocupamos el bloque libre encontrado
-                disco[i].setOcupado(true);
-                disco[i].setNombreArchivo(archivo.getNombre());
-                bloquesLibres--;
-
-                // 2. Lógica de los punteros (Encadenamiento)
-                if (bloquesAsignados == 0) {
-                    // Si es el PRIMER bloque que encontramos, el archivo debe recordar dónde empieza
-                    archivo.setIdPrimerBloque(i);
-                } else {
-                    // Si NO es el primero, hacemos que el bloque anterior apunte a este nuevo bloque
-                    disco[bloqueAnterior].setSiguienteBloque(i);
+            if (disco[i].isLibre()) {
+                if (inicioActual == -1) inicioActual = i;
+                tamañoActual++;
+            } else {
+                if (tamañoActual >= bloquesNecesarios && tamañoActual < menorTamañoHueco) {
+                    menorTamañoHueco = tamañoActual;
+                    mejorInicio = inicioActual;
                 }
-
-                // 3. Nos preparamos para la siguiente vuelta del ciclo
-                bloqueAnterior = i;
-                bloquesAsignados++;
-
-                // 4. ¿Ya terminamos de asignar todos los bloques que pedía el archivo?
-                if (bloquesAsignados == bloquesNecesarios) {
-                    disco[i].setSiguienteBloque(-1); // -1 significa "Fin del archivo" (EOF)
-                    break; // Salimos del ciclo
-                }
+                inicioActual = -1;
+                tamañoActual = 0;
             }
         }
-        return true; // Asignación exitosa
+        if (tamañoActual >= bloquesNecesarios && tamañoActual < menorTamañoHueco) {
+            mejorInicio = inicioActual;
+        }
+
+        if (mejorInicio != -1) {
+            int anterior = -1;
+            int cont = 0;
+            for (int i = mejorInicio; cont < bloquesNecesarios; i++) {
+                if (disco[i].isLibre()) {
+                    disco[i].setLibre(false);
+                    disco[i].setArchivoDueño(archivo.getNombre());
+                    disco[i].setColor(archivo.getColor());
+                    
+                    if (cont == 0) archivo.setIdPrimerBloque(i);
+                    else disco[anterior].setSiguienteBloque(i);
+                    
+                    anterior = i;
+                    cont++;
+                }
+            }
+            disco[anterior].setSiguienteBloque(-1);
+            bloquesLibres -= bloquesNecesarios;
+            return true;
+        }
+        return false;
     }
 
-    // --- LIBERAR ESPACIO (Para cuando se elimina un archivo) ---
     public void liberarEspacio(ArchivoVirtual archivo) {
-        int bloqueActual = archivo.getIdPrimerBloque();
-        
-        // Seguimos la cadena de bloques hasta encontrar el final (-1)
-        while (bloqueActual != -1) {
-            int siguiente = disco[bloqueActual].getSiguienteBloque();
-            disco[bloqueActual].liberar(); // Llama al método que creamos en BloqueDisco (limpia los datos)
+        int actual = archivo.getIdPrimerBloque();
+        while (actual != -1) {
+            int siguiente = disco[actual].getSiguienteBloque();
+            disco[actual].setLibre(true);
+            disco[actual].setArchivoDueño(null);
+            disco[actual].setSiguienteBloque(-1);
+            disco[actual].setColor(null);
             bloquesLibres++;
-            bloqueActual = siguiente;      // Saltamos al siguiente eslabón de la cadena
+            actual = siguiente;
         }
-        
-        // Le quitamos el bloque de inicio al archivo porque ya fue borrado del disco
-        archivo.setIdPrimerBloque(-1);
     }
+
+    public BloqueDisco[] getDisco() { return disco; }
+    public int getBloquesLibres() { return bloquesLibres; }
 }

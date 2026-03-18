@@ -1,110 +1,61 @@
-package controlador;
+package logica;
 
-import estructuras.ListaEnlazada;
+import java.util.HashMap;
 import java.util.concurrent.Semaphore;
 
 public class GestorLocks {
-
-    // Clase interna para llevar el control de cada archivo sin usar HashMap de Java
-    private class LockArchivo {
-        String nombreArchivo;
-        int lectoresActivos;
-        Semaphore mutexLectores;    // Semáforo para proteger la variable 'lectoresActivos'
-        Semaphore semaforoEscritor; // Semáforo para bloquear/desbloquear la escritura
-
-        public LockArchivo(String nombre) {
-            this.nombreArchivo = nombre;
-            this.lectoresActivos = 0;
-            this.mutexLectores = new Semaphore(1); // 1 = Mutex (Mutual Exclusion)
-            this.semaforoEscritor = new Semaphore(1);
-        }
-    }
-
-    // Nuestra estructura propia para guardar los locks de todos los archivos
-    private ListaEnlazada<LockArchivo> listaLocks;
-    
-    // Semáforo extra para que dos procesos no intenten crear el lock del mismo archivo a la vez
-    private Semaphore mutexLista; 
+    // Usamos un mapa para tener un semáforo distinto por cada archivo
+    private HashMap<String, Semaphore> semaforosArchivos;
+    // Llevamos la cuenta de cuántos usuarios están leyendo
+    private HashMap<String, Integer> contadoresLectores;
 
     public GestorLocks() {
-        this.listaLocks = new ListaEnlazada<>();
-        this.mutexLista = new Semaphore(1);
+        this.semaforosArchivos = new HashMap<>();
+        this.contadoresLectores = new HashMap<>();
     }
 
-    // Método que busca el lock de un archivo. Si el archivo es nuevo y no tiene lock, lo crea.
-    private LockArchivo obtenerOCrearLock(String nombreArchivo) {
-        try {
-            mutexLista.acquire(); // Bloqueamos la lista para buscar seguros
-            
-            // Buscamos en nuestra lista enlazada usando el método que creamos en el Día 1
-            for (int i = 0; i < listaLocks.tamaño(); i++) {
-                LockArchivo lock = listaLocks.obtener(i);
-                if (lock.nombreArchivo.equals(nombreArchivo)) {
-                    mutexLista.release(); // Liberamos la lista
-                    return lock;
-                }
-            }
-            
-            // Si llegamos aquí, el lock no existía. Lo creamos.
-            LockArchivo nuevoLock = new LockArchivo(nombreArchivo);
-            listaLocks.agregar(nuevoLock);
-            mutexLista.release(); // Liberamos la lista
-            return nuevoLock;
-            
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return null;
-        }
-    }
+    // --- BLOQUEO PARA LECTURA ---
+    // Muchos pueden leer al mismo tiempo, siempre que nadie esté escribiendo
+    public synchronized void adquirirLockLectura(String nombreArchivo) {
+        semaforosArchivos.putIfAbsent(nombreArchivo, new Semaphore(1));
+        contadoresLectores.putIfAbsent(nombreArchivo, 0);
 
-    // --- OPERACIONES DE LECTURA (Lock Compartido) ---
-    public void adquirirLockLectura(String nombreArchivo) {
-        LockArchivo lock = obtenerOCrearLock(nombreArchivo);
         try {
-            lock.mutexLectores.acquire(); // Pedimos permiso para modificar el contador
-            lock.lectoresActivos++;
-            
-            if (lock.lectoresActivos == 1) {
-                // Si soy el PRIMER lector, tranco la puerta a los escritores
-                lock.semaforoEscritor.acquire();
+            // Si es el primer lector, debe pedir permiso al semáforo (bloquea escritores)
+            if (contadoresLectores.get(nombreArchivo) == 0) {
+                semaforosArchivos.get(nombreArchivo).acquire();
             }
-            lock.mutexLectores.release(); // Soltamos el contador para que otros lectores puedan entrar
+            // Aumentamos el contador de lectores
+            contadoresLectores.put(nombreArchivo, contadoresLectores.get(nombreArchivo) + 1);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
     }
 
-    public void liberarLockLectura(String nombreArchivo) {
-        LockArchivo lock = obtenerOCrearLock(nombreArchivo);
-        try {
-            lock.mutexLectores.acquire();
-            lock.lectoresActivos--;
-            
-            if (lock.lectoresActivos == 0) {
-                // Si soy el ÚLTIMO lector en salir, abro la puerta para los escritores
-                lock.semaforoEscritor.release();
-            }
-            lock.mutexLectores.release();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+    public synchronized void liberarLockLectura(String nombreArchivo) {
+        int lectores = contadoresLectores.get(nombreArchivo) - 1;
+        contadoresLectores.put(nombreArchivo, lectores);
+
+        // Si ya no queda ningún lector, liberamos el semáforo para que entren escritores
+        if (lectores == 0) {
+            semaforosArchivos.get(nombreArchivo).release();
         }
     }
 
-    // --- OPERACIONES DE ESCRITURA (Lock Exclusivo) ---
+    // --- BLOQUEO PARA ESCRITURA (Exclusivo) ---
+    // Solo uno puede escribir y nadie puede leer mientras tanto
     public void adquirirLockEscritura(String nombreArchivo) {
-        LockArchivo lock = obtenerOCrearLock(nombreArchivo);
+        semaforosArchivos.putIfAbsent(nombreArchivo, new Semaphore(1));
         try {
-            // El escritor pide el semáforo principal. 
-            // Si hay algún lector o escritor adentro, se quedará aquí bloqueado (dormido)
-            lock.semaforoEscritor.acquire();
+            semaforosArchivos.get(nombreArchivo).acquire();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
     }
 
     public void liberarLockEscritura(String nombreArchivo) {
-        LockArchivo lock = obtenerOCrearLock(nombreArchivo);
-        // El escritor terminó, libera el semáforo para el siguiente proceso
-        lock.semaforoEscritor.release();
+        if (semaforosArchivos.containsKey(nombreArchivo)) {
+            semaforosArchivos.get(nombreArchivo).release();
+        }
     }
 }
