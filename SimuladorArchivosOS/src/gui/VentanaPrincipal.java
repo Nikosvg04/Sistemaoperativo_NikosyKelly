@@ -151,7 +151,7 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         try {
             int tamaño = Integer.parseInt(tamañoStr);
             Color colorAleatorio = new Color((int)(Math.random() * 0x1000000));
-            String mensaje = sistema.solicitarCreacionArchivo(nombre, tamaño, "Usuario", colorAleatorio);
+String mensaje = sistema.solicitarCreacionArchivo(nombre, tamaño, "Usuario1", "Administrador", colorAleatorio);
             
             JOptionPane.showMessageDialog(this, mensaje, "Resultado de la Operación", JOptionPane.INFORMATION_MESSAGE);
             
