@@ -49,9 +49,7 @@ public class SistemaArchivos {
         }
 
         // 2. Creamos el archivo lógicamente usando los métodos seguros que acabamos de crear
-        ArchivoVirtual nuevoArchivo = new ArchivoVirtual(nombre, dueño);
-        nuevoArchivo.setTamaño(tamaño);
-        nuevoArchivo.setColor(color);
+        ArchivoVirtual nuevoArchivo = new ArchivoVirtual(nombre, dueño, tamaño, color);
         
         // 3. Lo metemos en la carpeta Raíz (luego haremos que se pueda meter en subcarpetas)
         carpetaRaiz.agregarElemento(nuevoArchivo);
