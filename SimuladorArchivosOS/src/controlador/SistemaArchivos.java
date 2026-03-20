@@ -65,7 +65,69 @@ public class SistemaArchivos {
         
         return "Solicitud enviada con éxito. Proceso PID: " + procesoCrear.getPid() + " en espera.";
     }
+
+    // --- MÉTODO PARA ELIMINAR UN ARCHIVO ---
+    public String solicitarEliminacionArchivo(String nombre) {
+        
+        // 1. Buscamos los bloques en el disco y los vaciamos (los volvemos a poner grises/libres)
+        modelo.BloqueDisco[] disco = gestorDisco.getDisco();
+        boolean archivoEncontrado = false;
+        
+        for (int i = 0; i < disco.length; i++) {
+            if (disco[i].isOcupado() && disco[i].getNombreArchivo().equals(nombre)) {
+                disco[i].setOcupado(false);
+                disco[i].setNombreArchivo("");
+                disco[i].setSiguienteBloque(-1); // -1 significa que no apunta a nada
+                archivoEncontrado = true;
+            }
+        }
+        
+        if (!archivoEncontrado) {
+            return "Error: No se encontró el archivo '" + nombre + "' en el disco.";
+        }
+        
+        // 2. Lo quitamos del árbol de carpetas (JTree)
+        estructuras.ListaEnlazada<modelo.NodoSistemaArchivos> elementos = carpetaRaiz.getContenido();
+        for (int i = 0; i < elementos.tamaño(); i++) {
+            if (elementos.obtener(i).getNombre().equals(nombre)) {
+                elementos.eliminar(i); // NOTA: Si aquí te sale una línea roja, cámbialo por "remover(i)"
+                break;
+            }
+        }
+        
+        // 3. Encolamos el proceso de eliminación para el hilo
+        Proceso procesoEliminar = new Proceso(Proceso.Operacion.DELETE, nombre, 0);
+        planificador.agregarProceso(procesoEliminar);
+        
+        return "El archivo '" + nombre + "' fue eliminado y sus bloques liberados con éxito.";
+    }
     
+    // --- MÉTODO PARA LEER UN ARCHIVO ---
+    public String solicitarLecturaArchivo(String nombre) {
+        
+        // 1. Verificamos si el archivo realmente existe en el disco
+        modelo.BloqueDisco[] disco = gestorDisco.getDisco();
+        boolean archivoEncontrado = false;
+        int bloquesLeidos = 0;
+        
+        for (int i = 0; i < disco.length; i++) {
+            if (disco[i].isOcupado() && disco[i].getNombreArchivo().equals(nombre)) {
+                archivoEncontrado = true;
+                bloquesLeidos++; // Contamos cuántos bloques tiene para la simulación
+            }
+        }
+        
+        if (!archivoEncontrado) {
+            return "Error: No se encontró el archivo '" + nombre + "' en el disco.";
+        }
+        
+        // 2. Encolamos el proceso de lectura para que el brazo del disco se mueva
+        Proceso procesoLeer = new Proceso(Proceso.Operacion.READ, nombre, bloquesLeidos);
+        planificador.agregarProceso(procesoLeer);
+        
+        return "Leyendo archivo '" + nombre + "'.\nSe enviaron " + bloquesLeidos + " bloques a la cola de lectura del disco.";
+    }
+
     // Método de limpieza al cerrar el programa
     public void apagarSistema() {
         planificador.apagarSistema();

@@ -15,9 +15,51 @@ public class VentanaPrincipal extends javax.swing.JFrame {
         initComponents();
         this.sistema = new SistemaArchivos();
         
-        // ¡MAGIA! Cargamos el árbol y la tabla apenas se abre la ventana
+        // ¡MAGIA! Cargamos todo apenas se abre la ventana
         refrescarArbol(sistema.getCarpetaRaiz()); 
         refrescarTablaFAT();
+        refrescarDiscoVisual(); // Agregado para los cuadritos de colores
+
+        // --- CONECTAMOS EL BOTÓN ELIMINAR MANUALMENTE (Bypass de NetBeans) ---
+        btnEliminar.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                // Pedimos el nombre del archivo a borrar
+                String nombre = JOptionPane.showInputDialog(VentanaPrincipal.this, "Ingrese el nombre exacto del archivo a eliminar (Ej. reporte.txt):");
+                
+                if (nombre == null || nombre.trim().isEmpty()) {
+                    return; // Si el usuario cancela, no hacemos nada
+                }
+
+                // Le decimos al backend que lo elimine
+                String mensaje = sistema.solicitarEliminacionArchivo(nombre);
+                
+                // ¡ACTUALIZAMOS TODO VISUALMENTE!
+                refrescarArbol(sistema.getCarpetaRaiz());
+                refrescarTablaFAT(); 
+                refrescarDiscoVisual();
+                
+                // Mostramos el resultado
+                JOptionPane.showMessageDialog(VentanaPrincipal.this, mensaje, "Resultado", JOptionPane.INFORMATION_MESSAGE);
+            }
+        });
+
+        // --- CONECTAMOS EL BOTÓN LEER MANUALMENTE ---
+        btnLeer.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                // Pedimos el nombre del archivo a leer
+                String nombre = JOptionPane.showInputDialog(VentanaPrincipal.this, "Ingrese el nombre del archivo a leer (Ej. foto.png):");
+                
+                if (nombre == null || nombre.trim().isEmpty()) {
+                    return; // Si cancela, no hacemos nada
+                }
+
+                // Le pedimos al backend que simule la lectura
+                String mensaje = sistema.solicitarLecturaArchivo(nombre);
+                
+                // Mostramos el aviso de que se está leyendo
+                JOptionPane.showMessageDialog(VentanaPrincipal.this, mensaje, "Operación de Lectura", JOptionPane.INFORMATION_MESSAGE);
+            }
+        });
     }
 
     @SuppressWarnings("unchecked")
@@ -176,9 +218,10 @@ public class VentanaPrincipal extends javax.swing.JFrame {
             // Mostramos resultado
             JOptionPane.showMessageDialog(this, mensaje, "Resultado de la Operación", JOptionPane.INFORMATION_MESSAGE);
             
-            // ¡ACTUALIZAMOS EL ÁRBOL Y LA TABLA VISUALMENTE!
+            // ¡ACTUALIZAMOS EL ÁRBOL, LA TABLA Y EL DISCO VISUALMENTE!
             refrescarArbol(sistema.getCarpetaRaiz());
             refrescarTablaFAT(); 
+            refrescarDiscoVisual();
             
         } catch (NumberFormatException ex) {
             JOptionPane.showMessageDialog(this, "Error: El tamaño debe ser un número entero válido.", "Error de entrada", JOptionPane.ERROR_MESSAGE);
@@ -220,35 +263,52 @@ public class VentanaPrincipal extends javax.swing.JFrame {
 
     // --- MÉTODO PARA ACTUALIZAR LA TABLA FAT ---
     public void refrescarTablaFAT() {
-        // Obtenemos el modelo de tu tabla visual
         javax.swing.table.DefaultTableModel modeloTabla = (javax.swing.table.DefaultTableModel) tablaFAT.getModel();
-        
-        // ¡Mejora visual! Ponemos nombres bonitos a las columnas de la tabla
         modeloTabla.setColumnIdentifiers(new String[]{"Bloque ID", "Estado / Archivo", "Siguiente Bloque"});
-        
-        // Limpiamos la tabla para no duplicar datos
         modeloTabla.setRowCount(0); 
 
-        // Traemos el arreglo de bloques que simula el disco (son 200 bloques)
         modelo.BloqueDisco[] disco = sistema.getGestorDisco().getDisco();
         
-        // Recorremos todo el disco bloque por bloque
         for (int i = 0; i < disco.length; i++) {
             modelo.BloqueDisco bloque = disco[i];
-            
-            // Si está ocupado, mostramos el nombre del archivo. Si no, dice "Libre"
             String estadoArchivo = bloque.isOcupado() ? bloque.getNombreArchivo() : "Libre";
-            
-            // Si es el final del archivo mostramos "-1 (EOF)". Si no, mostramos el número del siguiente bloque.
             String siguiente = bloque.getSiguienteBloque() == -1 ? "-1 (EOF)" : String.valueOf(bloque.getSiguienteBloque());
             
-            // Agregamos la fila a la tabla
             modeloTabla.addRow(new Object[]{
                 bloque.getId(), 
                 estadoArchivo, 
                 bloque.isOcupado() ? siguiente : "-"
             });
         }
+    }
+
+    // --- MÉTODO PARA DIBUJAR LOS CUADRITOS DEL DISCO (SD) ---
+    public void refrescarDiscoVisual() {
+        panelDiscoVisual.removeAll();
+        // Configuramos una cuadrícula de 10 filas por 20 columnas (200 bloques)
+        panelDiscoVisual.setLayout(new java.awt.GridLayout(10, 20, 2, 2)); 
+        
+        modelo.BloqueDisco[] disco = sistema.getGestorDisco().getDisco();
+        
+        for (int i = 0; i < disco.length; i++) {
+            javax.swing.JPanel cuadrito = new javax.swing.JPanel();
+            cuadrito.setBorder(javax.swing.BorderFactory.createLineBorder(Color.DARK_GRAY));
+            
+            if (disco[i].isOcupado()) {
+                // Si está ocupado, lo pintamos de un color y le ponemos texto al pasar el mouse
+                cuadrito.setBackground(new Color(100, 150, 255)); // Azul claro
+                cuadrito.setToolTipText("Bloque " + i + " - Archivo: " + disco[i].getNombreArchivo());
+            } else {
+                // Si está libre, lo pintamos gris
+                cuadrito.setBackground(Color.LIGHT_GRAY);
+                cuadrito.setToolTipText("Bloque " + i + " - Libre");
+            }
+            panelDiscoVisual.add(cuadrito);
+        }
+        
+        // Recargamos el panel visualmente
+        panelDiscoVisual.revalidate();
+        panelDiscoVisual.repaint();
     }
 
     public static void main(String args[]) {
