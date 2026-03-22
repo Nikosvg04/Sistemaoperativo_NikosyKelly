@@ -1,0 +1,5 @@
+[
+  { "nombre": "System32.dll", "tamaño": 10, "dueño": "Administrador" },
+  { "nombre": "Log.txt", "tamaño": 3, "dueño": "Administrador" },
+  { "nombre": "UserDoc.pdf", "tamaño": 5, "dueño": "User" }
+]
