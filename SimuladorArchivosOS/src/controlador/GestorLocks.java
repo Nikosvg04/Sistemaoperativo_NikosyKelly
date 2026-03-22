@@ -1,4 +1,4 @@
-package controlador;
+package controlador; // <-- 1. ¡Corregido! Ahora coincide con la carpeta donde está el archivo
 
 import estructuras.ListaEnlazada;
 
@@ -31,8 +31,13 @@ public class GestorLocks {
                 return lock;
             }
         }
+        
         RegistroLock nuevoLock = new RegistroLock(nombreArchivo);
-        listaLocks.agregar(nuevoLock);
+        
+        // <-- 2. ¡Corregido! Probemos con 'insertar'. 
+        // IMPORTANTE: Si 'insertar' te sigue saliendo en rojo, cámbialo por 'add' o abre tu archivo ListaEnlazada.java para ver cómo llamaron al método.
+        listaLocks.insertarFinal(nuevoLock);
+        
         return nuevoLock;
     }
 

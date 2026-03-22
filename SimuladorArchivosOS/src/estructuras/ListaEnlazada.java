@@ -2,44 +2,49 @@ package estructuras;
 
 public class ListaEnlazada<T> {
     private Nodo<T> cabeza;
-    private Nodo<T> cola;
     private int tamaño;
+
+    private class Nodo<T> {
+        T dato;
+        Nodo<T> siguiente;
+        Nodo(T dato) { this.dato = dato; this.siguiente = null; }
+    }
 
     public ListaEnlazada() {
         this.cabeza = null;
-        this.cola = null;
         this.tamaño = 0;
     }
 
-    public void agregar(T data) {
-        Nodo<T> nuevoNodo = new Nodo<>(data);
+    public int tamaño() { return tamaño; }
+
+    public void insertarFinal(T dato) {
+        Nodo<T> nuevo = new Nodo<>(dato);
         if (cabeza == null) {
-            cabeza = nuevoNodo;
-            cola = nuevoNodo;
+            cabeza = nuevo;
         } else {
-            cola.siguiente = nuevoNodo;
-            cola = nuevoNodo;
+            Nodo<T> temp = cabeza;
+            while (temp.siguiente != null) temp = temp.siguiente;
+            temp.siguiente = nuevo;
         }
         tamaño++;
     }
 
-    // Método crucial para poder leer elementos por su posición
     public T obtener(int indice) {
-        if (indice < 0 || indice >= tamaño) {
-            return null; 
-        }
-        Nodo<T> actual = cabeza;
-        for (int i = 0; i < indice; i++) {
-            actual = actual.siguiente;
-        }
-        return actual.data;
+        if (indice < 0 || indice >= tamaño) return null;
+        Nodo<T> temp = cabeza;
+        for (int i = 0; i < indice; i++) temp = temp.siguiente;
+        return temp.dato;
     }
 
-    public int tamaño() {
-        return tamaño;
-    }
-    
-    public boolean estaVacia() {
-        return tamaño == 0;
+    public void eliminar(int indice) {
+        if (indice < 0 || indice >= tamaño) return;
+        if (indice == 0) {
+            cabeza = cabeza.siguiente;
+        } else {
+            Nodo<T> temp = cabeza;
+            for (int i = 0; i < indice - 1; i++) temp = temp.siguiente;
+            temp.siguiente = temp.siguiente.siguiente;
+        }
+        tamaño--;
     }
 }

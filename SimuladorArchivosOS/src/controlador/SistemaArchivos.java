@@ -1,14 +1,15 @@
 package controlador;
 
-import modelo.DirectorioVirtual;
-import modelo.ArchivoVirtual;
-import modelo.Proceso;
+import modelo.*;
 import java.awt.Color;
+import logica.ServicioSeguridad;
+import logica.GestorLocks; // <-- ESTA ES LA LÍNEA MÁGICA QUE FALTABA
+import estructuras.ListaEnlazada;
 
 public class SistemaArchivos {
     
     private GestorDisco gestorDisco;
-    private GestorJournal gestorJournal; // Ya estaba aquí
+    private GestorJournal gestorJournal; 
     private PlanificadorDisco planificador;
     private GestorLocks gestorLocks;
     private DirectorioVirtual carpetaRaiz;
@@ -20,17 +21,18 @@ public class SistemaArchivos {
         this.planificador = new PlanificadorDisco(0, this);
         
         this.gestorLocks = new GestorLocks();
-        this.gestorJournal = new GestorJournal(); // <-- INICIALIZACIÓN DEL JOURNAL AÑADIDA
+        this.gestorJournal = new GestorJournal(); 
         this.carpetaRaiz = new DirectorioVirtual("Raíz", "Administrador");
         
         this.planificador.start(); // Encendemos el hilo del disco
         
-        // --- CARGA INICIAL DESDE JSON (Vuelto a agregar para que funcione lo de antes) ---
+        // --- CARGA INICIAL DESDE JSON ---
         estructuras.ListaEnlazada<GestorJSON.ArchivoCargado> archivosIniciales = GestorJSON.leerEstadoInicial("estado_archivos.json");
         for (int i = 0; i < archivosIniciales.tamaño(); i++) {
             GestorJSON.ArchivoCargado arch = archivosIniciales.obtener(i);
             Color colorRandom = new Color((int)(Math.random()*0x1000000));
-            solicitarCreacionArchivo(arch.nombre, arch.tamaño, arch.dueño, colorRandom);
+            // Durante la carga inicial asumimos rol de Administrador para que el JSON no sea bloqueado
+            solicitarCreacionArchivo(arch.nombre, arch.tamaño, arch.dueño, "Administrador", colorRandom);
         }
     }
 
@@ -38,23 +40,53 @@ public class SistemaArchivos {
     public PlanificadorDisco getPlanificador() { return planificador; }
     public GestorLocks getGestorLocks() { return gestorLocks; }
     public DirectorioVirtual getCarpetaRaiz() { return carpetaRaiz; }
-    public GestorJournal getGestorJournal() { return gestorJournal; } // <-- GETTER AÑADIDO
+    public GestorJournal getGestorJournal() { return gestorJournal; }
 
-    // --- AHORA LAS ACCIONES SOLO ENCOLAN PROCESOS ---
+    // --- AHORA LAS ACCIONES VERIFICAN SEGURIDAD (KELLY) Y ENCOLAN PROCESOS (NIKOS) ---
     
-    public String solicitarCreacionArchivo(String nombre, int tamaño, String dueño, Color color) {
+    public String solicitarCreacionArchivo(String nombre, int tamaño, String dueño, String rol, Color color) {
+        ServicioSeguridad seguridad = new ServicioSeguridad();
+        
+        // 1. Verificación de Seguridad de Kelly
+        if (!seguridad.tienePermiso(dueño, rol, null, "Crear")) {
+            return "Acceso denegado: Solo los administradores pueden crear archivos.";
+        }
+
+        // 2. Encolado en el Planificador de Nikos
         Proceso procesoCrear = new Proceso(Proceso.Operacion.CREATE, nombre, tamaño);
         planificador.agregarProceso(procesoCrear);
         return "Proceso encolado: Petición para CREAR '" + nombre + "' añadida a la cola.";
     }
 
-    public String solicitarEliminacionArchivo(String nombre) {
+    public String solicitarEliminacionArchivo(String nombre, String usuario, String rol) {
+        ArchivoVirtual archivo = buscarArchivo(nombre);
+        if (archivo == null) return "Error: No existe el archivo.";
+
+        ServicioSeguridad seguridad = new ServicioSeguridad();
+        
+        // 1. Verificación de Seguridad de Kelly
+        if (!seguridad.tienePermiso(usuario, rol, archivo, "Eliminar")) {
+            return "Acceso denegado: No tienes permiso para eliminar este archivo.";
+        }
+
+        // 2. Encolado en el Planificador de Nikos
         Proceso procesoEliminar = new Proceso(Proceso.Operacion.DELETE, nombre, 0);
         planificador.agregarProceso(procesoEliminar);
         return "Proceso encolado: Petición para ELIMINAR '" + nombre + "' añadida a la cola.";
     }
     
-    public String solicitarLecturaArchivo(String nombre) {
+    public String solicitarLecturaArchivo(String nombre, String usuario, String rol) {
+        ArchivoVirtual archivo = buscarArchivo(nombre);
+        if (archivo == null) return "Error: No existe el archivo.";
+
+        ServicioSeguridad seguridad = new ServicioSeguridad();
+        
+        // 1. Verificación de Seguridad de Kelly
+        if (!seguridad.tienePermiso(usuario, rol, archivo, "Leer")) {
+            return "Acceso denegado: No tienes permiso para leer este archivo.";
+        }
+
+        // 2. Encolado en el Planificador de Nikos
         Proceso procesoLeer = new Proceso(Proceso.Operacion.READ, nombre, 0);
         planificador.agregarProceso(procesoLeer);
         return "Proceso encolado: Petición para LEER '" + nombre + "' añadida a la cola.";
@@ -70,7 +102,8 @@ public class SistemaArchivos {
         }
         return null;
     }
-// --- RUTINA DE CRASH RECOVERY (SIMULADOR DE FALLOS) ---
+
+    // --- RUTINA DE CRASH RECOVERY (SIMULADOR DE FALLOS) ---
     public void simularFalloYRecuperar() {
         System.out.println("\n💥 ¡CRASH SIMULADO! El sistema se ha caído (Simulando pérdida de RAM)...");
         
@@ -110,13 +143,14 @@ public class SistemaArchivos {
                 }
             } else {
                 // El PDF exige "deshacer (undo) operaciones pendientes no confirmadas"
-                System.out.println("️ Deshaciendo (UNDO) operación por corrupción (Se quedó PENDIENTE): " + t.operacion + " sobre " + t.nombreArchivo);
+                System.out.println("⚠️ Deshaciendo (UNDO) operación por corrupción (Se quedó PENDIENTE): " + t.operacion + " sobre " + t.nombreArchivo);
             }
         }
         
-        System.out.println("? ¡Recuperación completada! El disco vuelve a estar en línea.\n");
+        System.out.println("🚀 ¡Recuperación completada! El disco vuelve a estar en línea.\n");
     }
-// --- MÉTODO PARA EXPORTAR EL SISTEMA A JSON ---
+
+    // --- MÉTODO PARA EXPORTAR EL SISTEMA A JSON ---
     public void guardarSistemaEnJSON() {
         System.out.println("\n📦 Preparando exportación del sistema a JSON...");
         GestorJSON.guardarEstado(this.carpetaRaiz, "estado_archivos.json");
