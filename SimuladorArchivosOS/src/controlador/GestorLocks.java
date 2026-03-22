@@ -1,110 +1,75 @@
 package controlador;
 
 import estructuras.ListaEnlazada;
-import java.util.concurrent.Semaphore;
 
 public class GestorLocks {
 
-    // Clase interna para llevar el control de cada archivo sin usar HashMap de Java
-    private class LockArchivo {
+    // Clase interna para llevar la cuenta de cada archivo
+    private class RegistroLock {
         String nombreArchivo;
         int lectoresActivos;
-        Semaphore mutexLectores;    // Semáforo para proteger la variable 'lectoresActivos'
-        Semaphore semaforoEscritor; // Semáforo para bloquear/desbloquear la escritura
+        boolean escritorActivo;
 
-        public LockArchivo(String nombre) {
-            this.nombreArchivo = nombre;
+        RegistroLock(String nombreArchivo) {
+            this.nombreArchivo = nombreArchivo;
             this.lectoresActivos = 0;
-            this.mutexLectores = new Semaphore(1); // 1 = Mutex (Mutual Exclusion)
-            this.semaforoEscritor = new Semaphore(1);
+            this.escritorActivo = false;
         }
     }
 
-    // Nuestra estructura propia para guardar los locks de todos los archivos
-    private ListaEnlazada<LockArchivo> listaLocks;
-    
-    // Semáforo extra para que dos procesos no intenten crear el lock del mismo archivo a la vez
-    private Semaphore mutexLista; 
+    private ListaEnlazada<RegistroLock> listaLocks;
 
     public GestorLocks() {
         this.listaLocks = new ListaEnlazada<>();
-        this.mutexLista = new Semaphore(1);
     }
 
-    // Método que busca el lock de un archivo. Si el archivo es nuevo y no tiene lock, lo crea.
-    private LockArchivo obtenerOCrearLock(String nombreArchivo) {
-        try {
-            mutexLista.acquire(); // Bloqueamos la lista para buscar seguros
-            
-            // Buscamos en nuestra lista enlazada usando el método que creamos en el Día 1
-            for (int i = 0; i < listaLocks.tamaño(); i++) {
-                LockArchivo lock = listaLocks.obtener(i);
-                if (lock.nombreArchivo.equals(nombreArchivo)) {
-                    mutexLista.release(); // Liberamos la lista
-                    return lock;
-                }
+    // Busca si el archivo ya tiene un candado creado, si no, lo crea
+    private RegistroLock obtenerOcrearLock(String nombreArchivo) {
+        for (int i = 0; i < listaLocks.tamaño(); i++) {
+            RegistroLock lock = listaLocks.obtener(i);
+            if (lock.nombreArchivo.equals(nombreArchivo)) {
+                return lock;
             }
-            
-            // Si llegamos aquí, el lock no existía. Lo creamos.
-            LockArchivo nuevoLock = new LockArchivo(nombreArchivo);
-            listaLocks.agregar(nuevoLock);
-            mutexLista.release(); // Liberamos la lista
-            return nuevoLock;
-            
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return null;
         }
+        RegistroLock nuevoLock = new RegistroLock(nombreArchivo);
+        listaLocks.agregar(nuevoLock);
+        return nuevoLock;
     }
 
-    // --- OPERACIONES DE LECTURA (Lock Compartido) ---
-    public void adquirirLockLectura(String nombreArchivo) {
-        LockArchivo lock = obtenerOCrearLock(nombreArchivo);
-        try {
-            lock.mutexLectores.acquire(); // Pedimos permiso para modificar el contador
-            lock.lectoresActivos++;
-            
-            if (lock.lectoresActivos == 1) {
-                // Si soy el PRIMER lector, tranco la puerta a los escritores
-                lock.semaforoEscritor.acquire();
-            }
-            lock.mutexLectores.release(); // Soltamos el contador para que otros lectores puedan entrar
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+    // --- LOCK COMPARTIDO (Múltiples lecturas permitidas) ---
+    public boolean adquirirLockLectura(String nombreArchivo) {
+        RegistroLock lock = obtenerOcrearLock(nombreArchivo);
+        if (lock.escritorActivo) {
+            return false; // Alguien está escribiendo, acceso denegado
         }
+        lock.lectoresActivos++;
+        System.out.println("   [LOCK] Lock de LECTURA concedido para: " + nombreArchivo);
+        return true;
     }
 
+    // --- LOCK EXCLUSIVO (Solo uno puede escribir, nadie puede leer) ---
+    public boolean adquirirLockEscritura(String nombreArchivo) {
+        RegistroLock lock = obtenerOcrearLock(nombreArchivo);
+        if (lock.escritorActivo || lock.lectoresActivos > 0) {
+            return false; // Alguien está leyendo o escribiendo, acceso denegado
+        }
+        lock.escritorActivo = true;
+        System.out.println("   [LOCK] Lock de ESCRITURA concedido para: " + nombreArchivo);
+        return true;
+    }
+
+    // --- LIBERAR CANDADOS ---
     public void liberarLockLectura(String nombreArchivo) {
-        LockArchivo lock = obtenerOCrearLock(nombreArchivo);
-        try {
-            lock.mutexLectores.acquire();
+        RegistroLock lock = obtenerOcrearLock(nombreArchivo);
+        if (lock.lectoresActivos > 0) {
             lock.lectoresActivos--;
-            
-            if (lock.lectoresActivos == 0) {
-                // Si soy el ÚLTIMO lector en salir, abro la puerta para los escritores
-                lock.semaforoEscritor.release();
-            }
-            lock.mutexLectores.release();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    // --- OPERACIONES DE ESCRITURA (Lock Exclusivo) ---
-    public void adquirirLockEscritura(String nombreArchivo) {
-        LockArchivo lock = obtenerOCrearLock(nombreArchivo);
-        try {
-            // El escritor pide el semáforo principal. 
-            // Si hay algún lector o escritor adentro, se quedará aquí bloqueado (dormido)
-            lock.semaforoEscritor.acquire();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+            System.out.println("   [UNLOCK] Lock de LECTURA liberado en: " + nombreArchivo);
         }
     }
 
     public void liberarLockEscritura(String nombreArchivo) {
-        LockArchivo lock = obtenerOCrearLock(nombreArchivo);
-        // El escritor terminó, libera el semáforo para el siguiente proceso
-        lock.semaforoEscritor.release();
+        RegistroLock lock = obtenerOcrearLock(nombreArchivo);
+        lock.escritorActivo = false;
+        System.out.println("   [UNLOCK] Lock de ESCRITURA liberado en: " + nombreArchivo);
     }
 }

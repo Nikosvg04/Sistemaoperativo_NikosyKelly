@@ -70,4 +70,55 @@ public class SistemaArchivos {
         }
         return null;
     }
+// --- RUTINA DE CRASH RECOVERY (SIMULADOR DE FALLOS) ---
+    public void simularFalloYRecuperar() {
+        System.out.println("\n💥 ¡CRASH SIMULADO! El sistema se ha caído (Simulando pérdida de RAM)...");
+        
+        // 1. "Borramos" la memoria reconstruyendo el disco y la raíz desde cero
+        this.gestorDisco = new GestorDisco(200); 
+        this.carpetaRaiz = new modelo.DirectorioVirtual("Raíz", "Administrador");
+        
+        System.out.println("🔧 Iniciando modo de recuperación (Leyendo Journal)...");
+        
+        // 2. Leemos la bitácora paso a paso para restaurar la consistencia
+        estructuras.ListaEnlazada<GestorJournal.Transaccion> log = gestorJournal.getBitacora();
+        
+        for (int i = 0; i < log.tamaño(); i++) {
+            GestorJournal.Transaccion t = log.obtener(i);
+            
+            // ¡Solo recuperamos lo que se guardó completamente antes del fallo!
+            if (t.estado.equals("CONFIRMADA")) {
+                
+                if (t.operacion.equals("CREATE")) {
+                    // Recreamos el archivo instantáneamente sin pasar por el hilo del disco
+                    Color colorRecuperado = new Color((int)(Math.random()*0x1000000));
+                    ArchivoVirtual archivoRecuperado = new ArchivoVirtual(t.nombreArchivo, "Recuperado", t.tamaño, colorRecuperado);
+                    
+                    if (gestorDisco.hayEspacioSuficiente(t.tamaño)) {
+                        gestorDisco.asignarEspacio(archivoRecuperado);
+                        carpetaRaiz.agregarElemento(archivoRecuperado);
+                        System.out.println("✅ Archivo restaurado con éxito: " + t.nombreArchivo);
+                    }
+                } 
+                else if (t.operacion.equals("DELETE")) {
+                    // Si confirmamos un DELETE antes del fallo, nos aseguramos de que no exista
+                    ArchivoVirtual arch = buscarArchivo(t.nombreArchivo);
+                    if (arch != null) {
+                        gestorDisco.liberarEspacio(arch);
+                        System.out.println("🗑️ Archivo eliminado según Journal: " + t.nombreArchivo);
+                    }
+                }
+            } else {
+                // El PDF exige "deshacer (undo) operaciones pendientes no confirmadas"
+                System.out.println("️ Deshaciendo (UNDO) operación por corrupción (Se quedó PENDIENTE): " + t.operacion + " sobre " + t.nombreArchivo);
+            }
+        }
+        
+        System.out.println("? ¡Recuperación completada! El disco vuelve a estar en línea.\n");
+    }
+// --- MÉTODO PARA EXPORTAR EL SISTEMA A JSON ---
+    public void guardarSistemaEnJSON() {
+        System.out.println("\n📦 Preparando exportación del sistema a JSON...");
+        GestorJSON.guardarEstado(this.carpetaRaiz, "estado_archivos.json");
+    }
 }
